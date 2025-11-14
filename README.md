@@ -2,6 +2,9 @@
 
 Sistema de monitoramento automático de disponibilidade de domínios .br e .com com notificações via Telegram.
 
+## GitAds Sponsored
+[![Sponsored by GitAds](https://gitads.dev/v1/ad-serve?source=gabireze/alertadominio@github)](https://gitads.dev/v1/ad-track?source=gabireze/alertadominio@github)
+
 ## Funcionalidades
 
 - Monitoramento de domínios .br e .com
