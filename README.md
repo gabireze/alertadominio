@@ -61,3 +61,5 @@ O bot envia duas tipos de mensagens:
 
 1. Status inicial ao iniciar, listando todos os domínios monitorados
 2. Alertas quando há mudança de status para estados específicos durante a janela de monitoramento
+
+<!-- GitAds-Verify: GKLKZIAJM782I7QX3TAODX1Z2GGTI4G4 -->
