@@ -1,0 +1,13 @@
+{
+  "name": "alertadominio",
+  "version": "1.0.0",
+  "description": "Monitor de domínios .br e .com com alertas via Telegram",
+  "type": "module",
+  "main": "monitor.js",
+  "scripts": {
+    "start": "node monitor.js"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}
