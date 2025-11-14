@@ -62,7 +62,7 @@ function parseResponse(text) {
 function queryDomain(fqdn, cookie = randomCookie()) {
   return new Promise((resolve, reject) => {
     const qid = Math.floor(Math.random() * 1e9).toString();
-    const version = 0; 
+    const version = 0;
     const lang = 1;
 
     const query = `${version} ${cookie} ${lang} ${qid} ${fqdn}`;

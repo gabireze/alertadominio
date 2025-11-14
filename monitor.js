@@ -4,8 +4,8 @@ dotenv.config();
 import { checkDomain, STATUS_MAP } from "./isavail.js";
 import { checkDomainCOM } from "./whois.js";
 
-const DOMAINS = process.env.DOMAINS 
-  ? process.env.DOMAINS.split(',').map(d => d.trim())
+const DOMAINS = process.env.DOMAINS
+  ? process.env.DOMAINS.split(",").map((d) => d.trim())
   : [];
 
 const ALERT_STATUSES_BR = new Set([0, 5, 6, 7, 9]);
@@ -37,12 +37,11 @@ async function sendTelegramMessage(text) {
   if (!res.ok) {
     const body = await res.text();
     console.error("Erro ao enviar mensagem ao Telegram:", res.status, body);
+  } else {
+    console.log("Mensagem enviada ao Telegram com sucesso");
   }
 }
 
-/**
- * Para .br: extrai datas de liberação (begin, end, accepting) se existirem
- */
 function extractReleaseDates(result, domain) {
   if (!result.lines || ![5, 6, 7, 9].includes(result.status)) {
     return null;
@@ -95,10 +94,12 @@ function formatDomainStatus(domain, result) {
 const lastNotifiedStatus = new Map();
 
 async function checkAllDomains() {
+  console.log(`Iniciando verificação de ${DOMAINS.length} domínio(s)...`);
   const results = [];
 
   for (const domain of DOMAINS) {
     try {
+      console.log(`Consultando ${domain}...`);
       let result;
       if (domain.endsWith(".br")) {
         result = await checkDomain(domain);
@@ -106,6 +107,7 @@ async function checkAllDomains() {
         result = await checkDomainCOM(domain);
       }
 
+      console.log(`${domain}: status ${result.status}`);
       results.push({ domain, result });
     } catch (err) {
       console.error(`Erro ao consultar ${domain}:`, err.message);
@@ -116,10 +118,12 @@ async function checkAllDomains() {
     }
   }
 
+  console.log("Verificação concluída.");
   return results;
 }
 
 async function sendStartupStatus() {
+  console.log("Enviando status inicial...");
   const now = new Date();
   const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
@@ -149,13 +153,17 @@ async function periodicCheck() {
   const now = new Date();
   const hour = now.getHours();
   const minute = now.getMinutes();
+  const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
   const inWindow =
     (hour === 14 && minute >= 50) || (hour === 15 && minute <= 10);
 
   if (!inWindow) {
+    console.log(`${timestamp} - Fora da janela de monitoramento (14:50-15:10)`);
     return;
   }
+
+  console.log(`${timestamp} - Dentro da janela de monitoramento, verificando...`);
 
   const results = await checkAllDomains();
   const alerts = [];
@@ -187,16 +195,28 @@ async function periodicCheck() {
   }
 
   if (alerts.length > 0) {
+    console.log(`${alerts.length} alerta(s) detectado(s):`);
+    alerts.forEach(alert => console.log(alert));
     const msg =
       `Atualização de status em domínios monitorados:\n\n` +
       alerts.join("\n\n");
     await sendTelegramMessage(msg);
+  } else {
+    console.log("Nenhum alerta detectado.");
   }
 }
 
 async function main() {
+  console.log("=" .repeat(50));
+  console.log("Monitor de Domínios Iniciado");
+  console.log(`Domínios monitorados: ${DOMAINS.join(", ")}`);
+  console.log(`Janela de alerta: 14:50 - 15:10`);
+  console.log(`Verificação a cada: 60 segundos`);
+  console.log("=" .repeat(50));
+
   await sendStartupStatus();
 
+  console.log("\nVerificação periódica ativada.");
   setInterval(() => {
     periodicCheck().catch((err) => {
       console.error("Erro na verificação periódica:", err.message);
