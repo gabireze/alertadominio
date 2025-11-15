@@ -13,6 +13,9 @@ const ALERT_STATUSES_COM = new Set([0]);
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const TIMEZONE = process.env.TIMEZONE || "America/Sao_Paulo";
+const MAX_RETRIES = parseInt(process.env.MAX_RETRIES || "3", 10);
+const RETRY_DELAY_MS = parseInt(process.env.RETRY_DELAY_MS || "2000", 10);
 
 if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
   console.error(
@@ -21,24 +24,33 @@ if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
   process.exit(1);
 }
 
+if (DOMAINS.length === 0) {
+  console.error(
+    "Nenhum domínio configurado. Defina DOMAINS no arquivo .env (ex: DOMAINS=example.com.br,test.com)"
+  );
+  process.exit(1);
+}
+
 async function sendTelegramMessage(text) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
 
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      chat_id: TELEGRAM_CHAT_ID,
-      text,
-      parse_mode: "Markdown",
-    }),
-  });
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: "Markdown",
+      }),
+    });
 
-  if (!res.ok) {
-    const body = await res.text();
-    console.error("Erro ao enviar mensagem ao Telegram:", res.status, body);
-  } else {
-    console.log("Mensagem enviada ao Telegram com sucesso");
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("Erro ao enviar mensagem ao Telegram:", res.status, body);
+    }
+  } catch (err) {
+    console.error("Erro ao conectar com Telegram:", err.message);
   }
 }
 
@@ -93,24 +105,38 @@ function formatDomainStatus(domain, result) {
 
 const lastNotifiedStatus = new Map();
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function checkDomainWithRetry(domain, attempt = 1) {
+  try {
+    let result;
+    if (domain.endsWith(".br")) {
+      result = await checkDomain(domain);
+    } else {
+      result = await checkDomainCOM(domain);
+    }
+    return result;
+  } catch (err) {
+    if (attempt < MAX_RETRIES) {
+      console.error(`Erro ao consultar ${domain} (tentativa ${attempt}/${MAX_RETRIES}): ${err.message}`);
+      await sleep(RETRY_DELAY_MS);
+      return checkDomainWithRetry(domain, attempt + 1);
+    }
+    throw err;
+  }
+}
+
 async function checkAllDomains() {
-  console.log(`Iniciando verificação de ${DOMAINS.length} domínio(s)...`);
   const results = [];
 
   for (const domain of DOMAINS) {
     try {
-      console.log(`Consultando ${domain}...`);
-      let result;
-      if (domain.endsWith(".br")) {
-        result = await checkDomain(domain);
-      } else {
-        result = await checkDomainCOM(domain);
-      }
-
-      console.log(`${domain}: status ${result.status}`);
+      const result = await checkDomainWithRetry(domain);
       results.push({ domain, result });
     } catch (err) {
-      console.error(`Erro ao consultar ${domain}:`, err.message);
+      console.error(`Erro final ao consultar ${domain} após ${MAX_RETRIES} tentativas:`, err.message);
       results.push({
         domain,
         result: { type: "error", error: err.message },
@@ -118,7 +144,6 @@ async function checkAllDomains() {
     }
   }
 
-  console.log("Verificação concluída.");
   return results;
 }
 
@@ -151,19 +176,17 @@ async function sendStartupStatus() {
 
 async function periodicCheck() {
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
+  const localTime = new Date(now.toLocaleString("en-US", { timeZone: TIMEZONE }));
+  const hour = localTime.getHours();
+  const minute = localTime.getMinutes();
   const timestamp = now.toISOString().replace("T", " ").substring(0, 19);
 
   const inWindow =
     (hour === 14 && minute >= 50) || (hour === 15 && minute <= 10);
 
   if (!inWindow) {
-    console.log(`${timestamp} - Fora da janela de monitoramento (14:50-15:10)`);
     return;
   }
-
-  console.log(`${timestamp} - Dentro da janela de monitoramento, verificando...`);
 
   const results = await checkAllDomains();
   const alerts = [];
@@ -195,14 +218,11 @@ async function periodicCheck() {
   }
 
   if (alerts.length > 0) {
-    console.log(`${alerts.length} alerta(s) detectado(s):`);
-    alerts.forEach(alert => console.log(alert));
+    console.log(`${timestamp} - ${alerts.length} alerta(s) detectado(s)`);
     const msg =
-      `Atualização de status em domínios monitorados:\n\n` +
+      `⚠️ Atualização de status em domínios monitorados:\n\n` +
       alerts.join("\n\n");
     await sendTelegramMessage(msg);
-  } else {
-    console.log("Nenhum alerta detectado.");
   }
 }
 
